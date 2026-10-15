@@ -20,9 +20,11 @@ Run these commands in the directory containing the `Dockerfile`:
 
 ```bash
 docker build -t airfarmdev/ros2_env:latest .
-docker image inspect airfarmdev/ros2_env:latest
+docker run --rm --entrypoint test airfarmdev/ros2_env:latest \
+  -x /usr/local/bin/ros2-vnc-start
 docker login
 docker push airfarmdev/ros2_env:latest
+docker buildx imagetools inspect airfarmdev/ros2_env:latest
 ```
 
 To publish **both amd64 and arm64** with Buildx, run this after `docker login`:
@@ -35,6 +37,14 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 Docker Hub stores the **image**, not a Docker Compose file. The official
 `ros:jazzy-ros-base-noble` base image supports amd64 and arm64; this Dockerfile
 adds the desktop and course packages for both architectures.
+
+The `test` command above exits successfully only when the built image includes
+browser display support. If an old image was pushed as `latest`, push the
+verified local `latest` tag again; rebuild it first only if the test fails.
+On the machine where you use `ros2.py`, run
+`python3 ros2.py configure` and select `airfarmdev/ros2_env:latest` after the
+Hub tag has been updated. Reconfiguring replaces the managed container but
+preserves the shared host folder.
 
 ## Start with `ros2.py`
 
@@ -79,10 +89,24 @@ The shared folder may be new; the script creates it. If Docker Desktop denies
 the mount, enable file sharing for that path in Docker Desktop settings.
 
 If the image build fails with `No space left on device`, check Docker's own
-storage with `docker system df`. Docker Desktop's virtual disk can fill up even
-when the host still has free space. Increase Docker Desktop's disk limit or
-clear unused build cache with `docker builder prune` if those cached layers are
-no longer needed. The course package set is large.
+storage, including the build cache:
+
+```bash
+docker system df
+docker buildx du
+docker exec ros2_env df -h /
+```
+
+The last command works when the `ros2_env` container already exists. Docker
+Desktop's Linux disk can be full even when macOS has free space. Increase the
+**Disk usage limit** in Docker Desktop under **Settings > Resources > Advanced**
+and retry the build. For a multi-platform build, leave room for both
+architectures and temporary package files. If old build caches are expendable,
+`docker buildx prune` clears the selected Buildx builder's cache; `docker
+builder prune` clears the default builder's cache. Cache removal does not delete
+images or volumes, but later builds may need to download and rebuild layers.
+Avoid `docker system prune --volumes` unless you have checked which unrelated
+project volumes it would remove.
 
 ## Graphical applications
 
